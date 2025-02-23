@@ -48,7 +48,7 @@ namespace DotNetAutoServiceRegister
         /// <param name="services">IServiceCollection implementation</param>
         /// <param name="type">Type that we want to register</param>
         /// <param name="lifetime">LifeTime cicle for the service</param>
-        private static void RegisterService(IServiceCollection services, Type type, AutoServiceLifetime lifetime)
+        public static void RegisterService(IServiceCollection services, Type type, AutoServiceLifetime lifetime)
         {
             Type[]? interfaces = type.GetInterfaces();
 
