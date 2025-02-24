@@ -25,5 +25,31 @@ namespace DotNetAutoServiceRegisterTests
             // Assert
             Assert.Equal(lifetime, attribute.Lifetime);
         }
+
+        [Theory]
+        [InlineData(AutoServiceLifetime.Singleton)]
+        [InlineData(AutoServiceLifetime.Scoped)]
+        [InlineData(AutoServiceLifetime.Transient)]
+        public void ComponentAttribute_Should_Set_Lifetime_Correctly(AutoServiceLifetime lifetime)
+        {
+            // Arrange & Act
+            ComponentAttribute attribute = new ComponentAttribute(lifetime);
+
+            // Assert
+            Assert.Equal(lifetime, attribute.Lifetime);
+        }
+
+        [Theory]
+        [InlineData(AutoServiceLifetime.Singleton)]
+        [InlineData(AutoServiceLifetime.Scoped)]
+        [InlineData(AutoServiceLifetime.Transient)]
+        public void RepositoryAttribute_Should_Set_Lifetime_Correctly(AutoServiceLifetime lifetime)
+        {
+            // Arrange & Act
+            RepositoryAttribute attribute = new RepositoryAttribute(lifetime);
+
+            // Assert
+            Assert.Equal(lifetime, attribute.Lifetime);
+        }
     }
 }
