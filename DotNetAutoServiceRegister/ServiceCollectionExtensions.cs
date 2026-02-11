@@ -64,7 +64,11 @@ namespace DotNetAutoServiceRegister
         {
             if (!string.IsNullOrEmpty(key))
             {
-                RegisterKeyedServicesTypes(services, type, lifetime, key);
+                var keys = key.Split('#', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                foreach (var singleKey in keys)
+                {
+                    RegisterKeyedServicesTypes(services, type, lifetime, singleKey);
+                }
             }
             else
             {
@@ -110,7 +114,11 @@ namespace DotNetAutoServiceRegister
             {
                 if (!string.IsNullOrEmpty(key))
                 {
-                    RegisterServicesKeyedInterfaces(services, type, lifetime, key, @interface);
+                    var keys = key.Split('#', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    foreach (var singleKey in keys)
+                    {
+                        RegisterServicesKeyedInterfaces(services, type, lifetime, singleKey, @interface);
+                    }
                 }
                 else
                 {
