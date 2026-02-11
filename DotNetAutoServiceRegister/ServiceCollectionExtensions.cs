@@ -30,15 +30,15 @@ namespace DotNetAutoServiceRegister
             {
                 if (typeInfo.ServiceAttribute != null)
                 {
-                    RegisterService(services, typeInfo.Type, typeInfo.ServiceAttribute.Lifetime);
+                    RegisterService(services, typeInfo.Type, typeInfo.ServiceAttribute.Lifetime, (typeInfo.ServiceAttribute as dynamic)?.Key);
                 }
                 else if (typeInfo.ComponentAttribute != null)
                 {
-                    RegisterService(services, typeInfo.Type, typeInfo.ComponentAttribute.Lifetime);
+                    RegisterService(services, typeInfo.Type, typeInfo.ComponentAttribute.Lifetime, (typeInfo.ComponentAttribute as dynamic)?.Key);
                 }
                 else if (typeInfo.RepositoryAttribute != null)
                 {
-                    RegisterService(services, typeInfo.Type, typeInfo.RepositoryAttribute.Lifetime);
+                    RegisterService(services, typeInfo.Type, typeInfo.RepositoryAttribute.Lifetime, (typeInfo.RepositoryAttribute as dynamic)?.Key);
                 }
             }
         }
@@ -48,24 +48,106 @@ namespace DotNetAutoServiceRegister
         /// <param name="services">IServiceCollection implementation</param>
         /// <param name="type">Type that we want to register</param>
         /// <param name="lifetime">LifeTime cicle for the service</param>
-        public static void RegisterService(IServiceCollection services, Type type, AutoServiceLifetime lifetime)
+        public static void RegisterService(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string? key = null)
         {
             Type[]? interfaces = type.GetInterfaces();
+            RegisterInterfaces(services, type, lifetime, key, interfaces);
 
+            if (interfaces.Length == 0)
+            {
+                RegisterTypes(services, type, lifetime, key);
+            }
+                
+        }
+
+        private static void RegisterTypes(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string? key)
+        {
+            if (!string.IsNullOrEmpty(key))
+            {
+                RegisterKeyedServicesTypes(services, type, lifetime, key);
+            }
+            else
+            {
+                RegisterServiceTypes(services, type, lifetime);
+            }
+        }
+
+        private static void RegisterServiceTypes(IServiceCollection services, Type type, AutoServiceLifetime lifetime)
+        {
+            switch (lifetime)
+            {
+                case AutoServiceLifetime.Singleton:
+                    services.AddSingleton(type);
+                    break;
+                case AutoServiceLifetime.Scoped:
+                    services.AddScoped(type);
+                    break;
+                case AutoServiceLifetime.Transient:
+                    services.AddTransient(type);
+                    break;
+            }
+        }
+
+        private static void RegisterKeyedServicesTypes(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string key)
+        {
+            switch (lifetime)
+            {
+                case AutoServiceLifetime.Singleton:
+                    services.AddKeyedSingleton(type, key, type);
+                    break;
+                case AutoServiceLifetime.Scoped:
+                    services.AddKeyedScoped(type, key, type);
+                    break;
+                case AutoServiceLifetime.Transient:
+                    services.AddKeyedTransient(type, key, type);
+                    break;
+            }
+        }
+
+        private static void RegisterInterfaces(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string? key, Type[] interfaces)
+        {
             foreach (Type? @interface in interfaces)
             {
-                switch (lifetime)
+                if (!string.IsNullOrEmpty(key))
                 {
-                    case DotNetAutoServiceRegister.AutoServiceLifetime.Singleton:
-                        services.AddSingleton(@interface, type);
-                        break;
-                    case DotNetAutoServiceRegister.AutoServiceLifetime.Scoped:
-                        services.AddScoped(@interface, type);
-                        break;
-                    case DotNetAutoServiceRegister.AutoServiceLifetime.Transient:
-                        services.AddTransient(@interface, type);
-                        break;
+                    RegisterServicesKeyedInterfaces(services, type, lifetime, key, @interface);
                 }
+                else
+                {
+                    RegisterServicesInterfaces(services, type, lifetime, @interface);
+                }
+            }
+        }
+
+        private static void RegisterServicesInterfaces(IServiceCollection services, Type type, AutoServiceLifetime lifetime, Type @interface)
+        {
+            switch (lifetime)
+            {
+                case AutoServiceLifetime.Singleton:
+                    services.AddSingleton(@interface, type);
+                    break;
+                case AutoServiceLifetime.Scoped:
+                    services.AddScoped(@interface, type);
+                    break;
+                case AutoServiceLifetime.Transient:
+                    services.AddTransient(@interface, type);
+                    break;
+            }
+        }
+
+        private static void RegisterServicesKeyedInterfaces(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string key, Type @interface)
+        {
+            switch (lifetime)
+            {
+                case AutoServiceLifetime.Singleton:
+                    services.AddKeyedSingleton(@interface, key, type);
+                    break;
+                case AutoServiceLifetime.Scoped:
+                    services.AddKeyedScoped(@interface, key, type);
+                    break;
+                case AutoServiceLifetime.Transient:
+                    services.AddKeyedTransient(@interface, key, type);
+                    break;
             }
         }
     }

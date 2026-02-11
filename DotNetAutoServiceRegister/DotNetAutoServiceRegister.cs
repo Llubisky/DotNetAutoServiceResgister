@@ -19,10 +19,12 @@
         public class ServiceAttribute : Attribute
         {
             public AutoServiceLifetime Lifetime { get; }
+            public string? Key { get; }
 
-            public ServiceAttribute(AutoServiceLifetime lifetime = AutoServiceLifetime.Singleton)
+            public ServiceAttribute(AutoServiceLifetime lifetime = AutoServiceLifetime.Singleton, string? key = null)
             {
                 Lifetime = lifetime;
+                Key = key;
             }
         }
 
@@ -33,10 +35,12 @@
         public class ComponentAttribute : Attribute
         {
             public AutoServiceLifetime Lifetime { get; }
+            public string? Key { get; }
 
-            public ComponentAttribute(AutoServiceLifetime lifetime = AutoServiceLifetime.Singleton)
+            public ComponentAttribute(AutoServiceLifetime lifetime = AutoServiceLifetime.Singleton, string? key = null)
             {
                 Lifetime = lifetime;
+                Key = key;
             }
         }
         /// <summary>
@@ -46,11 +50,12 @@
         public class RepositoryAttribute : Attribute
         {
             public AutoServiceLifetime Lifetime { get; }
+            public string? Key { get; }
 
-            public RepositoryAttribute(AutoServiceLifetime lifetime = AutoServiceLifetime.Transient)
+            public RepositoryAttribute(AutoServiceLifetime lifetime = AutoServiceLifetime.Transient, string? key = null)
             {
                 Lifetime = lifetime;
-
+                Key = key;
             }
         }
     }
