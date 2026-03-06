@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Linq;
 using System.Reflection;
@@ -8,14 +8,50 @@ namespace DotNetAutoServiceRegister
 {
     public static class ServiceCollectionExtensions
     {
-        /// <summary>
-        /// Method that will add the decorators to your services
-        /// </summary>
-        /// <param name="services">IServiceCollection implementation</param>
-        /// <param name="assembly">Assembly of the class</param>
+#if !NET8_0_OR_GREATER
+        internal static void EnsureKeyedServiceRegistry(IServiceCollection services)
+        {
+            bool storeRegistered = services.Any(sd => sd.ServiceType == typeof(KeyedServiceRegistrationStore));
+            if (!storeRegistered)
+            {
+                services.AddSingleton<KeyedServiceRegistrationStore>();
+            }
+
+            bool registryRegistered = services.Any(sd => sd.ServiceType == typeof(KeyedServiceRegistry));
+            if (!registryRegistered)
+            {
+                services.AddSingleton<KeyedServiceRegistry>(sp =>
+                    new KeyedServiceRegistry(sp, sp.GetService<KeyedServiceRegistrationStore>()!));
+            }
+        }
+
+        private static KeyedServiceRegistrationStore GetOrCreateStore(IServiceCollection services)
+        {
+            var descriptor = services.FirstOrDefault(sd => sd.ServiceType == typeof(KeyedServiceRegistrationStore));
+
+            if (descriptor?.ImplementationInstance is KeyedServiceRegistrationStore existingStore)
+            {
+                return existingStore;
+            }
+
+            var store = new KeyedServiceRegistrationStore();
+
+            if (descriptor != null)
+            {
+                services.Remove(descriptor);
+            }
+            services.AddSingleton(store);
+
+            return store;
+        }
+#endif
+
         public static void AddDecoratedServices(this IServiceCollection services, Assembly assembly)
         {
-            // Shame of me... I dont want to use var but here is the easiest and simplest way to do it
+#if !NET8_0_OR_GREATER
+            EnsureKeyedServiceRegistry(services);
+#endif
+
             var types = assembly.GetTypes()
                 .Where(type => type.IsClass && !type.IsAbstract)
                 .Select(type => new
@@ -25,7 +61,7 @@ namespace DotNetAutoServiceRegister
                     ComponentAttribute = type.GetCustomAttribute<ComponentAttribute>(),
                     RepositoryAttribute = type.GetCustomAttribute<RepositoryAttribute>()
                 });
-            // As each type in the collection is anonymous I will continue with my shame using var...
+
             foreach (var typeInfo in types)
             {
                 if (typeInfo.ServiceAttribute != null)
@@ -42,14 +78,16 @@ namespace DotNetAutoServiceRegister
                 }
             }
         }
-        /// <summary>
-        /// Method that will register the service in the IServiceCollection
-        /// </summary>
-        /// <param name="services">IServiceCollection implementation</param>
-        /// <param name="type">Type that we want to register</param>
-        /// <param name="lifetime">LifeTime cicle for the service</param>
+
         public static void RegisterService(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string? key = null)
         {
+#if !NET8_0_OR_GREATER
+            if (!string.IsNullOrEmpty(key))
+            {
+                EnsureKeyedServiceRegistry(services);
+            }
+#endif
+
             Type[]? interfaces = type.GetInterfaces();
             RegisterInterfaces(services, type, lifetime, key, interfaces);
 
@@ -57,18 +95,44 @@ namespace DotNetAutoServiceRegister
             {
                 RegisterTypes(services, type, lifetime, key);
             }
-                
         }
 
         private static void RegisterTypes(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string? key)
         {
             if (!string.IsNullOrEmpty(key))
             {
-                var keys = key.Split('#', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+#if NET8_0_OR_GREATER
+                var keys = SplitAndTrimKeys(key);
+                if (keys.Length > 1 && lifetime == AutoServiceLifetime.Singleton)
+                {
+                    RegisterMultiKeyServicesTypes(services, type, keys);
+                }
+                else
+                {
+                    foreach (var singleKey in keys)
+                    {
+                        RegisterKeyedServicesTypes(services, type, lifetime, singleKey);
+                    }
+                }
+#else
+                var keys = SplitAndTrimKeys(key);
+                var store = GetOrCreateStore(services);
+
+                if (keys.Length > 1)
+                {
+                    store.StartGroup();
+                }
+
                 foreach (var singleKey in keys)
                 {
-                    RegisterKeyedServicesTypes(services, type, lifetime, singleKey);
+                    RegisterKeyedServicesTypesLegacy(services, type, lifetime, singleKey);
                 }
+
+                if (keys.Length > 1)
+                {
+                    store.EndGroup();
+                }
+#endif
             }
             else
             {
@@ -92,6 +156,7 @@ namespace DotNetAutoServiceRegister
             }
         }
 
+#if NET8_0_OR_GREATER
         private static void RegisterKeyedServicesTypes(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string key)
         {
             switch (lifetime)
@@ -108,17 +173,74 @@ namespace DotNetAutoServiceRegister
             }
         }
 
+        private static void RegisterMultiKeyServicesTypes(IServiceCollection services, Type type, string[] keys)
+        {
+            object? sharedInstance = null;
+            var lockObj = new object();
+
+            foreach (var key in keys)
+            {
+                services.AddKeyedSingleton(type, key, (sp, _) =>
+                {
+                    lock (lockObj)
+                    {
+                        if (sharedInstance == null)
+                        {
+                            sharedInstance = Activator.CreateInstance(type)!;
+                        }
+                        return sharedInstance;
+                    }
+                });
+            }
+        }
+#endif
+
+#if !NET8_0_OR_GREATER
+        private static void RegisterKeyedServicesTypesLegacy(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string key)
+        {
+            var store = GetOrCreateStore(services);
+            store.Add(type, key, type, lifetime);
+        }
+#endif
+
         private static void RegisterInterfaces(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string? key, Type[] interfaces)
         {
             foreach (Type? @interface in interfaces)
             {
                 if (!string.IsNullOrEmpty(key))
                 {
-                    var keys = key.Split('#', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+#if NET8_0_OR_GREATER
+                    var keys = SplitAndTrimKeys(key);
+                    if (keys.Length > 1 && lifetime == AutoServiceLifetime.Singleton)
+                    {
+                        RegisterMultiKeyServicesInterfaces(services, type, keys, @interface);
+                    }
+                    else
+                    {
+                        foreach (var singleKey in keys)
+                        {
+                            RegisterServicesKeyedInterfaces(services, type, lifetime, singleKey, @interface);
+                        }
+                    }
+#else
+                    var keys = SplitAndTrimKeys(key);
+                    var store = GetOrCreateStore(services);
+
+                    if (keys.Length > 1)
+                    {
+                        store.StartGroup();
+                    }
+
                     foreach (var singleKey in keys)
                     {
-                        RegisterServicesKeyedInterfaces(services, type, lifetime, singleKey, @interface);
+                        RegisterServicesKeyedInterfacesLegacy(services, type, lifetime, singleKey, @interface);
                     }
+
+                    if (keys.Length > 1)
+                    {
+                        store.EndGroup();
+                    }
+#endif
                 }
                 else
                 {
@@ -143,6 +265,7 @@ namespace DotNetAutoServiceRegister
             }
         }
 
+#if NET8_0_OR_GREATER
         private static void RegisterServicesKeyedInterfaces(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string key, Type @interface)
         {
             switch (lifetime)
@@ -157,6 +280,50 @@ namespace DotNetAutoServiceRegister
                     services.AddKeyedTransient(@interface, key, type);
                     break;
             }
+        }
+
+        private static void RegisterMultiKeyServicesInterfaces(IServiceCollection services, Type type, string[] keys, Type @interface)
+        {
+            object? sharedInstance = null;
+            var lockObj = new object();
+
+            foreach (var key in keys)
+            {
+                services.AddKeyedSingleton(@interface, key, (sp, _) =>
+                {
+                    lock (lockObj)
+                    {
+                        if (sharedInstance == null)
+                        {
+                            sharedInstance = Activator.CreateInstance(type)!;
+                        }
+                        return sharedInstance;
+                    }
+                });
+            }
+        }
+#endif
+
+#if !NET8_0_OR_GREATER
+        private static void RegisterServicesKeyedInterfacesLegacy(IServiceCollection services, Type type, AutoServiceLifetime lifetime, string key, Type @interface)
+        {
+            var store = GetOrCreateStore(services);
+            store.Add(@interface, key, type, lifetime);
+        }
+#endif
+
+        private static string[] SplitAndTrimKeys(string key)
+        {
+#if NET5_0_OR_GREATER
+            return key.Split('#', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+#else
+            var keys = key.Split(new[] { '#' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < keys.Length; i++)
+            {
+                keys[i] = keys[i].Trim();
+            }
+            return keys;
+#endif
         }
     }
 }
